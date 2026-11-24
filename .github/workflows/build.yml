@@ -72,6 +72,17 @@ jobs:
       - name: Build (build-all.sh)
         run: bash build-all.sh
 
+      # obs-plugintemplate configures the OBS sources with OUTPUT_QUIET, so a
+      # failure there shows no reason; re-run that configure with full output.
+      - name: Diagnose OBS sources configure
+        if: failure()
+        run: |
+          B="$(ls -d obs-plugin/.deps/obs-studio-*/build_x64 2>/dev/null | head -1)"
+          [ -n "$B" ] || { echo "no OBS build dir"; ls -la obs-plugin/.deps || true; exit 0; }
+          VS_DIR="$("/c/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe" -latest -property installationPath | tr -d '\r')"
+          "$(cygpath -u "$VS_DIR")/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe" "$B" 2>&1 | tail -120 || true
+          tail -60 "$B/CMakeFiles/CMakeConfigureLog.yaml" 2>/dev/null || true
+
       - name: Check dist/ for embedded build paths
         run: |
           # Every file should be free of the checkout path (prefix maps,

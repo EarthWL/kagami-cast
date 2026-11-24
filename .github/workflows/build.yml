@@ -59,29 +59,44 @@ jobs:
           "/c/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe" -latest -property displayName
           ls "/c/Program Files (x86)/Inno Setup 6/ISCC.exe"
 
-      # build-deps.sh skips its ~10 min build when the stamp in deps/prefix
-      # matches the script; the source tarballs are needed for the release too.
-      - name: Cache minimal FFmpeg / gst-libav
-        uses: actions/cache@v6
+      # build-deps.sh skips its build when the stamp in deps/prefix matches the
+      # script; the source tarballs are needed for the release too. Saved right
+      # after it is built, so a later failure does not throw the build away.
+      - name: Restore minimal FFmpeg / gst-libav
+        id: deps-cache
+        uses: actions/cache/restore@v6
         with:
           path: |
             deps/prefix
             deps/src
           key: deps-${{ runner.os }}-${{ hashFiles('build-deps.sh') }}
 
+      - name: Build minimal FFmpeg / gst-libav (build-deps.sh)
+        run: bash build-deps.sh
+
+      - name: Save minimal FFmpeg / gst-libav
+        if: steps.deps-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            deps/prefix
+            deps/src
+          key: ${{ steps.deps-cache.outputs.cache-primary-key }}
+
       - name: Build (build-all.sh)
         run: bash build-all.sh
 
-      # obs-plugintemplate configures the OBS sources with OUTPUT_QUIET, so a
-      # failure there shows no reason; re-run that configure with full output.
-      - name: Diagnose OBS sources configure
+      # obs-plugintemplate builds libobs with OUTPUT_QUIET, so a failure there
+      # shows no reason; build it again with the compiler output visible.
+      - name: Diagnose the libobs build
         if: failure()
         run: |
           B="$(ls -d obs-plugin/.deps/obs-studio-*/build_x64 2>/dev/null | head -1)"
           [ -n "$B" ] || { echo "no OBS build dir"; ls -la obs-plugin/.deps || true; exit 0; }
           VS_DIR="$("/c/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe" -latest -property installationPath | tr -d '\r')"
-          "$(cygpath -u "$VS_DIR")/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe" "$B" 2>&1 | tail -120 || true
-          tail -60 "$B/CMakeFiles/CMakeConfigureLog.yaml" 2>/dev/null || true
+          "$(cygpath -u "$VS_DIR")/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe" \
+            --build "$B" --target obs-frontend-api --config Debug -- -v:minimal -nologo 2>&1 \
+            | grep -E 'error|warning C|Error' | head -60 || true
 
       - name: Check dist/ for embedded build paths
         run: |

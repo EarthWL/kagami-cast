@@ -68,6 +68,9 @@ function(_setup_obs_studio)
       "${CMAKE_COMMAND}" -S "${dependencies_dir}/${_obs_destination}" -B
       "${dependencies_dir}/${_obs_destination}/build_${arch}" -G ${_cmake_generator} "${_cmake_arch}"
       -DOBS_CMAKE_VERSION:STRING=3.0.0 -DENABLE_PLUGINS:BOOL=OFF -DENABLE_FRONTEND:BOOL=OFF
+      # Kagami Cast: OBS turns warnings into errors by default; a newer MSVC than OBS
+      # was tested with then fails to build libobs, which is only linked against here.
+      -DCMAKE_COMPILE_WARNING_AS_ERROR:BOOL=OFF
       -DOBS_VERSION_OVERRIDE:STRING=${_obs_version} "-DCMAKE_PREFIX_PATH='${CMAKE_PREFIX_PATH}'" ${_is_fresh}
       ${_cmake_extra}
     RESULT_VARIABLE _process_result

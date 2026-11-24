@@ -247,10 +247,11 @@ public:
 
 		if (!tex_dynamic_ && gs_texture_acquire_sync(tex_, 0, 50) != 0)
 			return; // the sender still writes it; keep the previous output
-		gs_eparam_t *image = gs_effect_get_param_by_name(effect, "image");
-		gs_effect_set_texture(image, tex_);
-		while (gs_effect_loop(effect, "Draw"))
-			gs_draw_sprite(tex_, 0, 0, 0);
+		// Without OBS_SOURCE_CUSTOM_DRAW, OBS has already begun the "Draw" technique
+		// of `effect` (or a filter's effect) before calling us: only set the texture
+		// and draw. A gs_effect_loop here is refused ("An effect is already active").
+		gs_effect_set_texture(gs_effect_get_param_by_name(effect, "image"), tex_);
+		gs_draw_sprite(tex_, 0, 0, 0);
 		if (!tex_dynamic_)
 			gs_texture_release_sync(tex_, 0);
 	}

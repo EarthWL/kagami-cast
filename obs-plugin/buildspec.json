@@ -38,7 +38,7 @@
     },
     "name": "kagami-cast-obs",
     "displayName": "Kagami Cast for OBS",
-    "version": "0.1.0",
+    "version": "1.2.0",
     "author": "Kagami Cast contributors",
     "website": "https://github.com/EarthWL/kagami-cast",
     "email": "97925987+EarthWL@users.noreply.github.com"

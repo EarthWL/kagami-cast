@@ -173,6 +173,19 @@ echo "   $(grep -c '^  License' "$NOTICE") components listed"
 echo ">> copy end-user scripts + README (dist-extras/)"
 cp "$SRC/dist-extras/"* "$DIST/"
 
+# Copied after the DLL resolution above on purpose: the plugin links OBS's own
+# obs.dll and MSVC runtime, which must come from OBS, never from dist/.
+echo ">> OBS plugin (built by build-all.sh with Visual Studio)"
+OBS_PLUGIN="$SRC/build/obs-plugin-stage/kagami-cast-obs"
+if [ -f "$OBS_PLUGIN/bin/64bit/kagami-cast-obs.dll" ]; then
+  mkdir -p "$DIST/obs-plugin"
+  cp -r "$OBS_PLUGIN" "$DIST/obs-plugin/"
+  find "$DIST/obs-plugin" -name '*.pdb' -delete
+  echo "   dist/obs-plugin/kagami-cast-obs"
+else
+  echo "   not built — dist/ has no OBS plugin"
+fi
+
 # Windows line endings for the text files users open with Notepad
 for t in "$NOTICE" "$DIST/LICENSE.txt"; do sed -i 's/\r\?$/\r/' "$t"; done
 

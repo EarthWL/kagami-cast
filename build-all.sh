@@ -49,6 +49,33 @@ echo ">> $APP_DISPLAY_NAME GUI (Release, set by app/CMakeLists.txt)"
 cmake -S app -B build/app -G Ninja -DAPP_DISPLAY_NAME="$APP_DISPLAY_NAME" -DCMAKE_CXX_FLAGS="$PREFIX_MAP"
 cmake --build build/app
 
+echo ">> OBS plugin (MSVC; skipped when Visual Studio with C++ is not installed)"
+# OBS plugins must be built with MSVC against OBS's own SDK, so this step uses
+# Visual Studio's CMake, not MSYS2's. package.sh copies the result to dist/obs-plugin.
+OBS_STAGE="$SRC/build/obs-plugin-stage"
+rm -rf "$OBS_STAGE"
+VSWHERE="/c/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe"
+VS_DIR=""; VS_MAJOR=""
+if [ -f "$VSWHERE" ]; then
+  VS_QUERY=(-latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64)
+  VS_DIR="$("$VSWHERE" "${VS_QUERY[@]}" -property installationPath | tr -d '\r')"
+  VS_MAJOR="$("$VSWHERE" "${VS_QUERY[@]}" -property installationVersion | tr -d '\r' | cut -d. -f1)"
+fi
+VS_CMAKE="${VS_DIR:+$(cygpath -u "$VS_DIR")/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe}"
+if [ -n "$VS_CMAKE" ] && [ -f "$VS_CMAKE" ]; then
+  case "$VS_MAJOR" in
+    18) OBS_PRESET=windows-x64-vs2026 ;;   # Visual Studio 2026
+    *)  OBS_PRESET=windows-x64 ;;          # Visual Studio 2022 (the template's preset)
+  esac
+  # first run downloads the OBS sources/deps pinned in obs-plugin/buildspec.json
+  ( cd "$SRC/obs-plugin"
+    "$VS_CMAKE" --preset "$OBS_PRESET" >/dev/null
+    "$VS_CMAKE" --build --preset "$OBS_PRESET"
+    "$VS_CMAKE" --install build_x64 --config RelWithDebInfo --prefix "$(cygpath -m "$OBS_STAGE")" >/dev/null )
+else
+  echo "   Visual Studio with the C++ workload not found — dist/ will have no OBS plugin"
+fi
+
 bash "$SRC/package.sh"
 
 echo ">> installer (Inno Setup)"

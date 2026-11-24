@@ -5,7 +5,8 @@
 Kagami Cast is a small Windows control panel around [UxPlay](https://github.com/FDH2/UxPlay),
 the open-source AirPlay mirroring server. Pick a name and a quality preset, press
 **Start**, then choose the PC under *Screen Mirroring* on the iPhone. Video and audio
-play in their own window; the panel shows the connection status and log.
+play in their own window, or the picture goes straight into OBS Studio; the panel
+shows the connection status and log.
 
 [ภาษาไทย](README.th.md)
 
@@ -15,6 +16,7 @@ play in their own window; the panel shows the connection status and log.
 - Presets: balanced 1080p60, low latency, 4K H.265, and a maximum-compatibility mode
 - GPU video decoding (Direct3D 11/12, NVIDIA, Intel, AMD), software fallback
 - Optional PIN pairing so nobody else on the network can cast to your screen
+- **Send the picture to OBS Studio** as a source of its own — no window capture, no copy through the CPU
 - Installer sets up Windows Firewall (private networks by default) and Apple Bonjour
 - No telemetry, no account, no ads
 
@@ -31,10 +33,29 @@ The installer is not code-signed yet, so Windows SmartScreen may warn on first r
 Apple Bonjour (the installer handles it). If the iPhone does not list the PC, set
 the Wi-Fi network profile to *Private* in Windows settings.
 
+## Use with OBS Studio
+
+Requires OBS 31 or newer.
+
+1. In the installer, keep *Install the plugin that shows the iPhone picture as an OBS source*
+   ticked (it is pre-ticked when OBS is installed). Portable zip: run `INSTALL-OBS-Plugin.bat`.
+2. In OBS: Sources → **+** → **Kagami Cast (iPhone / iPad)**.
+3. In Kagami Cast: tick **Send to OBS** (ส่งภาพเข้า OBS), press Start, then mirror the iPhone.
+
+- **Rotation:** select the source and press **Ctrl+F** (*Fit to screen*) once, or set
+  **Bounds Type = Fit** with a box size in *Edit Transform*. OBS then rescales the picture
+  whenever the iPhone turns.
+- **Audio** still plays on the speakers; to record or stream it, add an
+  *Application Audio Capture* source for `uxplay.exe`.
+- **Graphics card:** the plugin tells Kagami Cast which adapter OBS renders on, so the frames
+  stay on that GPU. If the source's status says it receives through a CPU copy, restart
+  Kagami Cast while OBS is open.
+
 ## Build from source
 
-Requires [MSYS2](https://www.msys2.org) (UCRT64) and, for the installer,
-[Inno Setup 6](https://jrsoftware.org/isinfo.php).
+Requires [MSYS2](https://www.msys2.org) (UCRT64), [Inno Setup 6](https://jrsoftware.org/isinfo.php)
+for the installer, and Visual Studio 2022/2026 with C++ for the OBS plugin (skipped
+when Visual Studio is missing).
 
 ```sh
 # MSYS2 UCRT64 shell
@@ -55,6 +76,7 @@ What the build does:
 | `build-deps.sh` | Downloads (pinned SHA-256) and builds a minimal LGPL FFmpeg with only the AAC, ALAC, H.264 and HEVC decoders, plus gst-libav against it. Replaces ~150 MB of MSYS2's full FFmpeg with ~6 MB. |
 | `app/` | The Qt 6 control panel (`KagamiCast.exe`). |
 | `package.sh` | Copies only the 24 GStreamer plugins uxplay uses, resolves DLLs with `objdump`, writes `THIRD-PARTY-NOTICES.txt` and `licenses/`. |
+| `obs-plugin/` | The OBS source plugin (from obs-plugintemplate, built with MSVC; see [obs-plugin/README.md](obs-plugin/README.md)). `build-all.sh` finds Visual Studio with vswhere and puts the result in `dist/obs-plugin/`. |
 | `installer/setup.iss` | Inno Setup script (English/Thai). |
 
 The product name and installer id live in `product.conf`.

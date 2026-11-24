@@ -24,6 +24,15 @@ Kagami Cast (portable) — รับ Screen Mirroring (AirPlay) จาก iPhone
 4) บน iPhone:  Control Center -> Screen Mirroring -> เลือกชื่อเครื่อง
    ภาพจะเด้งเป็นหน้าต่างแยก ส่วนหน้าต่างโปรแกรมแสดงสถานะ + log
 
+ใช้กับ OBS Studio (OBS 31 ขึ้นไป)
+--------------------------------
+1) ปิด OBS แล้วดับเบิลคลิก  INSTALL-OBS-Plugin.bat  (ครั้งเดียว)
+2) ใน OBS: Sources -> + -> "Kagami Cast (iPhone / iPad)"
+3) ใน Kagami Cast ติ๊ก "ส่งภาพเข้า OBS" แล้วกดเริ่ม -> เปิด Screen Mirroring บน iPhone
+   - หมุนจอแล้วภาพไม่พอดี: เลือก Source แล้วกด Ctrl+F (Fit to screen) ครั้งเดียว
+   - เสียงยังออกลำโพง ถ้าจะอัดเสียงด้วยใช้ Application Audio Capture เลือก uxplay.exe
+   - ถอนปลั๊กอิน: ลบโฟลเดอร์  %ProgramData%\obs-studio\plugins\kagami-cast-obs
+
 ข้อกำหนด
 --------
 - Windows 10/11 64-bit

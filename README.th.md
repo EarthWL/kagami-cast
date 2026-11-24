@@ -5,7 +5,7 @@
 Kagami Cast คือหน้าต่างควบคุมบน Windows ที่ครอบ [UxPlay](https://github.com/FDH2/UxPlay)
 (เซิร์ฟเวอร์ AirPlay mirroring แบบโอเพนซอร์ส) ตั้งชื่อเครื่อง เลือกโหมด กด **เริ่มรับสัญญาณ**
 แล้วเลือกชื่อเครื่องใน *Screen Mirroring* บน iPhone — ภาพและเสียงขึ้นในหน้าต่างแยก
-ส่วนหน้าต่างโปรแกรมแสดงสถานะและ log
+หรือส่งภาพเข้า OBS Studio โดยตรง ส่วนหน้าต่างโปรแกรมแสดงสถานะและ log
 
 [English](README.md)
 
@@ -15,6 +15,7 @@ Kagami Cast คือหน้าต่างควบคุมบน Windows �
 - โหมด: สมดุล 1080p60, หน่วงต่ำสุด, 4K H.265, เข้ากันได้สูงสุด
 - ถอดรหัสภาพด้วย GPU (Direct3D 11/12, NVIDIA, Intel, AMD) และมีแบบซอฟต์แวร์สำรอง
 - เลือกให้ต้องใส่ PIN ได้ กันคนอื่นในเครือข่ายส่งภาพขึ้นจอ
+- **ส่งภาพเข้า OBS Studio** เป็น Source โดยตรง ไม่ต้องใช้ Window Capture และภาพไม่ต้องผ่าน CPU
 - ตัวติดตั้งตั้ง Firewall ให้ (ค่าเริ่มต้นเฉพาะเครือข่าย Private) และลง Apple Bonjour ให้
 - ไม่มี telemetry ไม่ต้องสมัครบัญชี ไม่มีโฆษณา
 
@@ -29,9 +30,25 @@ Kagami Cast คือหน้าต่างควบคุมบน Windows �
 **ต้องมี:** Windows 10/11 64-bit, iPhone กับ PC อยู่เครือข่ายเดียวกัน และ Apple Bonjour
 (ตัวติดตั้งจัดการให้) — ถ้า iPhone ไม่เห็นชื่อเครื่อง ให้ตั้ง Wi-Fi ใน Windows เป็น *Private*
 
+## ใช้กับ OBS Studio
+
+ต้องใช้ OBS 31 ขึ้นไป
+
+1. ตอนติดตั้ง ติ๊ก "ติดตั้งปลั๊กอินที่แสดงภาพ iPhone เป็น Source ใน OBS" (ติ๊กไว้ให้แล้วถ้าเครื่องมี OBS)
+   — ชุด portable ให้ดับเบิลคลิก `INSTALL-OBS-Plugin.bat`
+2. ใน OBS: Sources → **+** → **Kagami Cast (iPhone / iPad)**
+3. ใน Kagami Cast: ติ๊ก **ส่งภาพเข้า OBS** แล้วกดเริ่ม จากนั้นเปิด Screen Mirroring บน iPhone
+
+- **หมุนจอแล้วภาพไม่พอดี:** เลือก Source แล้วกด **Ctrl+F** (Fit to screen) ครั้งเดียว หรือใน
+  *Edit Transform* ตั้ง **Bounds Type = Fit** พร้อมขนาดกล่อง — OBS จะย่อขยายให้พอดีเองทุกครั้งที่หมุน
+- **เสียง:** ยังออกลำโพงตามปกติ ถ้าจะอัด/สตรีมเสียงด้วย ให้เพิ่ม *Application Audio Capture* แล้วเลือก `uxplay.exe`
+- **การ์ดจอ:** ปลั๊กอินบอกโปรแกรมว่า OBS ใช้การ์ดใบไหน ภาพจึงส่งตรงบน GPU เดียวกัน ถ้าสถานะใน
+  Source ขึ้นว่า "ผ่าน CPU" ให้ปิดแล้วเปิด Kagami Cast ใหม่ตอนที่ OBS เปิดอยู่
+
 ## Build จาก source
 
-ต้องมี [MSYS2](https://www.msys2.org) (UCRT64) และ [Inno Setup 6](https://jrsoftware.org/isinfo.php) สำหรับตัวติดตั้ง
+ต้องมี [MSYS2](https://www.msys2.org) (UCRT64), [Inno Setup 6](https://jrsoftware.org/isinfo.php) สำหรับตัวติดตั้ง
+และ Visual Studio 2022/2026 (C++) สำหรับปลั๊กอิน OBS — ถ้าไม่มี VS จะข้ามปลั๊กอินไป
 
 ```sh
 # ใน MSYS2 UCRT64 shell
@@ -53,6 +70,9 @@ bash build-all.sh
   เพราะ decodebin เลือกตามเครื่อง) หา DLL ด้วย `objdump` (ไม่ใช่ ldd เพราะ DLL ของ FFmpeg
   รุ่นเล็กชื่อซ้ำกับของ MSYS2) และสร้าง `THIRD-PARTY-NOTICES.txt` + โฟลเดอร์ `licenses/`
   — ถ้าจะใช้ option ใหม่ของ uxplay (`-hls`, `-ca`, `-mp4` …) ต้องเพิ่มปลั๊กอินในรายการ `PLUGINS`
+- **`obs-plugin/`** ปลั๊กอิน OBS (สร้างจาก obs-plugintemplate, build ด้วย MSVC) — รายละเอียดใน
+  [obs-plugin/README.md](obs-plugin/README.md); `build-all.sh` หา Visual Studio ด้วย vswhere แล้ววางผลไว้ที่
+  `dist/obs-plugin/`
 - **`installer/setup.iss`** สคริปต์ Inno Setup (อังกฤษ/ไทย)
 - ชื่อโปรแกรมและ id ของตัวติดตั้งอยู่ใน `product.conf`
 - `tools/` สคริปต์ตอนพัฒนา (รัน GUI/uxplay จาก build tree, firewall, ทดสอบเสียง)

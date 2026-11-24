@@ -29,6 +29,9 @@
 #define AppExe    "KagamiCast.exe"
 #define FwRuleTcp AppName + " (TCP)"
 #define FwRuleUdp AppName + " (UDP)"
+; OBS plugin, present in dist\ only when build-all.sh found Visual Studio
+#define ObsPluginDir DistDir + "\obs-plugin\kagami-cast-obs"
+#define HaveObsPlugin FileExists(ObsPluginDir + "\bin\64bit\kagami-cast-obs.dll")
 
 [Setup]
 ; "{{" is a literal "{" — AppId itself is "{GUID}"
@@ -78,14 +81,28 @@ en.StatusBonjour=Installing Apple Bonjour (lets the iPhone find this PC)...
 th.StatusBonjour=กำลังติดตั้ง Apple Bonjour (ทำให้ iPhone มองเห็นเครื่องนี้)...
 en.BonjourFailed=Apple Bonjour could not be installed automatically (winget is missing or there is no internet).%n%nPlease install "Bonjour Print Services for Windows" from Apple (or iTunes), then start {#AppName}. Without Bonjour the iPhone cannot see this PC.
 th.BonjourFailed=ติดตั้ง Apple Bonjour อัตโนมัติไม่สำเร็จ (ไม่มี winget หรือไม่มีอินเทอร์เน็ต)%n%nกรุณาติดตั้ง "Bonjour Print Services for Windows" จาก Apple (หรือ iTunes) แล้วค่อยเปิด {#AppName} — ถ้าไม่มี Bonjour iPhone จะมองไม่เห็นเครื่องนี้
+en.ObsGroup=OBS Studio:
+th.ObsGroup=OBS Studio:
+en.TaskObs=Install the plugin that shows the iPhone picture as an OBS source (OBS 31 or newer)
+th.TaskObs=ติดตั้งปลั๊กอินที่แสดงภาพ iPhone เป็น Source ใน OBS (ต้องใช้ OBS 31 ขึ้นไป)
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 Name: "firewallpublic"; Description: "{cm:TaskPublic}"; GroupDescription: "{cm:FirewallGroup}"; Flags: unchecked
+#if HaveObsPlugin
+; pre-ticked only when OBS is installed (see CurPageChanged)
+Name: "obsplugin"; Description: "{cm:TaskObs}"; GroupDescription: "{cm:ObsGroup}"
+#endif
 
 [Files]
-; the portable helper scripts/README are replaced by what this installer does
-Source: "{#DistDir}\*"; DestDir: "{app}"; Excludes: "*.bat,*README*.txt"; Flags: ignoreversion recursesubdirs createallsubdirs
+; the portable helper scripts/README are replaced by what this installer does;
+; the OBS plugin goes to OBS's plugin folder instead of {app}
+Source: "{#DistDir}\*"; DestDir: "{app}"; Excludes: "*.bat,*README*.txt,\obs-plugin"; Flags: ignoreversion recursesubdirs createallsubdirs
+#if HaveObsPlugin
+; %ProgramData%\obs-studio\plugins: where OBS 31+ loads per-machine plugins from.
+; Removed again on uninstall; a running OBS is offered to be closed (CloseApplications).
+Source: "{#ObsPluginDir}\*"; DestDir: "{commonappdata}\obs-studio\plugins\kagami-cast-obs"; Tasks: obsplugin; Flags: ignoreversion recursesubdirs createallsubdirs
+#endif
 
 [Icons]
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"
@@ -139,3 +156,27 @@ begin
   if CurStep = ssPostInstall then
     InstallBonjourIfMissing();
 end;
+
+#if HaveObsPlugin
+var
+  ObsTaskDefaultSet: Boolean;
+
+{ OBS's own installer writes this key; a portable or Steam OBS is not detected,
+  so the task stays visible for the user to tick. }
+function ObsInstalled(): Boolean;
+begin
+  Result := RegKeyExists(HKLM, 'SOFTWARE\OBS Studio') or RegKeyExists(HKCU, 'SOFTWARE\OBS Studio') or
+            FileExists(ExpandConstant('{commonpf64}\obs-studio\bin\64bit\obs64.exe'));
+end;
+
+procedure CurPageChanged(CurPageID: Integer);
+begin
+  { once, so going Back to the page keeps the user's choice }
+  if (CurPageID = wpSelectTasks) and (not ObsTaskDefaultSet) then
+  begin
+    ObsTaskDefaultSet := True;
+    if not ObsInstalled() then
+      WizardSelectTasks('!obsplugin');
+  end;
+end;
+#endif

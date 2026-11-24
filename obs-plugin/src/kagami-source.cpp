@@ -38,8 +38,9 @@
 
 namespace {
 
-constexpr const char *kDefaultPipe = "\\\\.\\pipe\\kagami-cast";
-constexpr const char *kSettingPipe = "pipe";
+// Fixed, not a setting: must equal kObsPipe in app/MainWindow.cpp, and a field for
+// it only invited edits that silently break the connection.
+constexpr const wchar_t *kPipe = L"\\\\.\\pipe\\kagami-cast";
 
 template<typename T> void SafeRelease(T *&p)
 {
@@ -49,16 +50,6 @@ template<typename T> void SafeRelease(T *&p)
 	}
 }
 
-std::wstring Utf8ToWide(const char *s)
-{
-	if (!s || !*s)
-		return {};
-	int n = MultiByteToWideChar(CP_UTF8, 0, s, -1, nullptr, 0);
-	std::wstring w(n > 0 ? n - 1 : 0, L'\0');
-	if (n > 1)
-		MultiByteToWideChar(CP_UTF8, 0, s, -1, w.data(), n);
-	return w;
-}
 
 std::string WideToUtf8(const wchar_t *w)
 {
@@ -139,14 +130,14 @@ enum class Mode { Waiting, Gpu, CpuCopy, Error };
 
 class KagamiSource {
 public:
-	KagamiSource(obs_data_t *settings, obs_source_t *source) : source_(source)
+	explicit KagamiSource(obs_source_t *source) : source_(source), pipe_(kPipe)
 	{
 		if (QueryObsAdapter(obs_luid_, obs_adapter_name_)) {
 			PublishObsAdapter(obs_luid_, obs_adapter_name_);
 			obs_log(LOG_INFO, "OBS renders on \"%s\" (LUID %lld)", obs_adapter_name_.c_str(),
 				static_cast<long long>(obs_luid_));
 		}
-		Update(settings);
+		worker_ = std::thread([this] { Run(); });
 	}
 
 	~KagamiSource()
@@ -160,24 +151,15 @@ public:
 			CloseHandle(pending_.handle);
 	}
 
-	void Update(obs_data_t *settings)
-	{
-		const char *pipe = obs_data_get_string(settings, kSettingPipe);
-		std::wstring wpipe = Utf8ToWide(pipe && *pipe ? pipe : kDefaultPipe);
-		if (wpipe == pipe_ && worker_.joinable())
-			return;
-		StopWorker();
-		pipe_ = wpipe;
-		stop_ = false;
-		worker_ = std::thread([this] { Run(); });
-	}
-
 	uint32_t Width() { return width_; }
 	uint32_t Height() { return height_; }
 
-	std::string Status()
+	std::string Status(obs_text_info_type &type)
 	{
 		std::lock_guard<std::mutex> lk(mutex_);
+		type = mode_ == Mode::CpuCopy ? OBS_TEXT_INFO_WARNING
+		       : mode_ == Mode::Error ? OBS_TEXT_INFO_ERROR
+					      : OBS_TEXT_INFO_NORMAL;
 		char buf[512];
 		switch (mode_) {
 		case Mode::Gpu:
@@ -524,9 +506,9 @@ const char *GetName(void *)
 	return obs_module_text("KagamiCast");
 }
 
-void *Create(obs_data_t *settings, obs_source_t *source)
+void *Create(obs_data_t *, obs_source_t *source)
 {
-	return new KagamiSource(settings, source);
+	return new KagamiSource(source);
 }
 
 void Destroy(void *data)
@@ -534,26 +516,27 @@ void Destroy(void *data)
 	delete static_cast<KagamiSource *>(data);
 }
 
-void UpdateSettings(void *data, obs_data_t *settings)
+// Returning true makes OBS rebuild the properties view, i.e. call GetProperties
+// again; the view does not follow status changes by itself.
+bool RefreshStatus(obs_properties_t *, obs_property_t *, void *)
 {
-	static_cast<KagamiSource *>(data)->Update(settings);
-}
-
-void GetDefaults(obs_data_t *settings)
-{
-	obs_data_set_default_string(settings, kSettingPipe, kDefaultPipe);
+	return true;
 }
 
 obs_properties_t *GetProperties(void *data)
 {
 	obs_properties_t *props = obs_properties_create();
 	if (data) {
-		const std::string status = static_cast<KagamiSource *>(data)->Status();
-		obs_properties_add_text(props, "status", status.c_str(), OBS_TEXT_INFO);
+		obs_text_info_type type = OBS_TEXT_INFO_NORMAL;
+		const std::string status = static_cast<KagamiSource *>(data)->Status(type);
+		// With a long description and no value, OBS shows "<description>  <long description>".
+		obs_property_t *p =
+			obs_properties_add_text(props, "status", obs_module_text("KagamiCast.Status"), OBS_TEXT_INFO);
+		obs_property_set_long_description(p, status.c_str());
+		obs_property_text_set_info_type(p, type);
+		obs_properties_add_button(props, "refresh", obs_module_text("KagamiCast.Refresh"), RefreshStatus);
 	}
-	obs_property_t *pipe =
-		obs_properties_add_text(props, kSettingPipe, obs_module_text("KagamiCast.Pipe"), OBS_TEXT_DEFAULT);
-	obs_property_set_long_description(pipe, obs_module_text("KagamiCast.Pipe.Description"));
+	obs_properties_add_text(props, "help", obs_module_text("KagamiCast.Help"), OBS_TEXT_INFO);
 	return props;
 }
 
@@ -584,8 +567,6 @@ void kagami_register_source(void)
 	info.get_name = GetName;
 	info.create = Create;
 	info.destroy = Destroy;
-	info.update = UpdateSettings;
-	info.get_defaults = GetDefaults;
 	info.get_properties = GetProperties;
 	info.video_render = VideoRender;
 	info.get_width = GetWidth;

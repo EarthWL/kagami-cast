@@ -42,6 +42,16 @@ cmake -S UxPlay -B build/uxplay -G Ninja -DCMAKE_BUILD_TYPE= \
       -DCMAKE_C_FLAGS="-Wno-alloc-size-larger-than $PREFIX_MAP" -DCMAKE_CXX_FLAGS="$PREFIX_MAP"
 cmake --build build/uxplay
 
+# gst-libav is built here against the installed GStreamer; a different minor
+# version (MSYS2 updates, CI runners) would not load. Fail early with a clear hint.
+GST_HAVE="$(pkgconf --modversion gstreamer-1.0)"
+GST_WANT="$(sed -n 's/^GSTLIBAV_VER=\([0-9.]*\).*/\1/p' build-deps.sh)"
+if [ "${GST_HAVE%.*}" != "${GST_WANT%.*}" ]; then
+  echo "GStreamer $GST_HAVE is installed but build-deps.sh builds gst-libav $GST_WANT:" >&2
+  echo "set GSTLIBAV_VER (and its SHA-256) in build-deps.sh to a $GST_HAVE-series release" >&2
+  exit 1
+fi
+
 echo ">> minimal FFmpeg + gst-libav (skipped when already built)"
 bash "$SRC/build-deps.sh"
 
@@ -65,7 +75,7 @@ VS_CMAKE="${VS_DIR:+$(cygpath -u "$VS_DIR")/Common7/IDE/CommonExtensions/Microso
 if [ -n "$VS_CMAKE" ] && [ -f "$VS_CMAKE" ]; then
   case "$VS_MAJOR" in
     18) OBS_PRESET=windows-x64-vs2026 ;;   # Visual Studio 2026
-    *)  OBS_PRESET=windows-x64 ;;          # Visual Studio 2022 (the template's preset)
+    *)  OBS_PRESET=windows-x64-vs2022 ;;   # Visual Studio 2022, newest installed Windows SDK
   esac
   # first run downloads the OBS sources/deps pinned in obs-plugin/buildspec.json
   ( cd "$SRC/obs-plugin"

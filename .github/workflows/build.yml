@@ -1,0 +1,103 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Builds Kagami Cast on a clean Windows runner the same way a release is built on a
+# developer PC (bash build-all.sh): uxplay, minimal FFmpeg/gst-libav, the Qt app,
+# the OBS plugin (MSVC), dist/, the installer and the portable zip. The files a
+# release needs are kept as a workflow artifact. Releases are still published by
+# hand; code signing (SignPath) will hook in here later.
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+          persist-credentials: false
+
+      # Same packages as in README.md, plus git (UxPlay commit in the notices).
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          cache: true
+          install: >-
+            make diffutils git
+          pacboy: >-
+            gcc:p cmake:p ninja:p pkgconf:p nasm:p meson:p curl:p xz:p
+            openssl:p libplist:p qt6-base:p
+            gstreamer:p gst-plugins-base:p gst-plugins-good:p gst-plugins-bad:p
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+
+      - name: Show tool versions
+        run: |
+          gcc --version | head -1
+          echo "GStreamer $(pkgconf --modversion gstreamer-1.0)"
+          pacman -Q mingw-w64-ucrt-x86_64-qt6-base
+          "/c/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe" -latest -property displayName
+          ls "/c/Program Files (x86)/Inno Setup 6/ISCC.exe"
+
+      # build-deps.sh skips its ~10 min build when the stamp in deps/prefix
+      # matches the script; the source tarballs are needed for the release too.
+      - name: Cache minimal FFmpeg / gst-libav
+        uses: actions/cache@v6
+        with:
+          path: |
+            deps/prefix
+            deps/src
+          key: deps-${{ runner.os }}-${{ hashFiles('build-deps.sh') }}
+
+      - name: Build (build-all.sh)
+        run: bash build-all.sh
+
+      - name: Check dist/ for embedded build paths
+        run: |
+          # Every file should be free of the checkout path (prefix maps,
+          # FFmpeg --prefix=/, /PDBALTPATH); a hit means a path leaked into a binary.
+          ws_m="$(cygpath -m "$GITHUB_WORKSPACE")"
+          ws_w="$(cygpath -w "$GITHUB_WORKSPACE")"
+          hits="$(grep -rlaF -e "$ws_m" -e "$ws_w" dist || true)"
+          if [ -n "$hits" ]; then
+            echo "::error::build path found in:"; echo "$hits"; exit 1
+          fi
+          echo "no build paths in $(find dist -type f | wc -l) files"
+          test -f dist/obs-plugin/kagami-cast-obs/bin/64bit/kagami-cast-obs.dll
+
+      - name: Summary
+        run: |
+          {
+            echo "### Kagami Cast build"
+            echo '```'
+            cat build/release/SHA256SUMS.txt
+            echo '```'
+            echo "UxPlay: $(grep -m1 -o 'commit [0-9a-f]*' dist/THIRD-PARTY-NOTICES.txt)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: KagamiCast-${{ github.ref_type == 'tag' && github.ref_name || github.sha }}
+          path: build/release/
+          if-no-files-found: error
+          retention-days: 30

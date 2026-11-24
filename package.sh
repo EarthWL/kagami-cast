@@ -89,7 +89,29 @@ LIC="$DIST/licenses"
 NOTICE="$DIST/THIRD-PARTY-NOTICES.txt"
 mkdir -p "$LIC"
 cp "$SRC/LICENSE" "$DIST/LICENSE.txt"
-UXPLAY_COMMIT="$(git -C "$SRC/UxPlay" rev-parse HEAD 2>/dev/null || echo unknown)"
+# Commit of the UxPlay checkout that was built (named in the notices as the
+# corresponding source). MSYS2 has no git unless the "git" package is installed,
+# so fall back to Git for Windows, then to reading the submodule's .git files.
+uxplay_commit() {
+  local g gitdir head ref
+  for g in git "/c/Program Files/Git/cmd/git.exe"; do
+    if command -v "$g" >/dev/null 2>&1; then
+      "$g" -C "$SRC/UxPlay" rev-parse HEAD 2>/dev/null && return
+    fi
+  done
+  gitdir="$SRC/UxPlay/.git"
+  [ -f "$gitdir" ] && gitdir="$SRC/UxPlay/$(sed -n 's/^gitdir: //p' "$gitdir" | tr -d '\r')"
+  head="$(tr -d '\r' < "$gitdir/HEAD" 2>/dev/null)" || { echo unknown; return; }
+  case "$head" in
+    "ref: "*)
+      ref="${head#ref: }"
+      if [ -f "$gitdir/$ref" ]; then tr -d '\r' < "$gitdir/$ref"
+      else awk -v r="$ref" '$2 == r { print $1; f=1 } END { if (!f) print "unknown" }' "$gitdir/packed-refs" 2>/dev/null || echo unknown
+      fi ;;
+    *) echo "$head" ;;
+  esac
+}
+UXPLAY_COMMIT="$(uxplay_commit)"
 FFMPEG_VER="$(sed -n 's/^FFMPEG_VER=\([0-9.]*\).*/\1/p' "$SRC/build-deps.sh")"
 GSTLIBAV_VER="$(sed -n 's/^GSTLIBAV_VER=\([0-9.]*\).*/\1/p' "$SRC/build-deps.sh")"
 mkdir -p "$LIC/uxplay" "$LIC/ffmpeg" "$LIC/gst-libav"

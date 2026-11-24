@@ -69,6 +69,14 @@
       "architecture": "x64"
     },
     {
+      "name": "windows-x64-vs2022",
+      "displayName": "Windows x64 (Visual Studio 2022, any Windows SDK)",
+      "description": "Like windows-x64 but without pinning Windows SDK 10.0.22621 (CI images may not have it)",
+      "inherits": ["windows-x64"],
+      "generator": "Visual Studio 17 2022",
+      "architecture": "x64"
+    },
+    {
       "name": "windows-ci-x64",
       "inherits": ["windows-x64"],
       "displayName": "Windows x64 CI build",
@@ -134,6 +142,13 @@
       "configurePreset": "windows-x64-vs2026",
       "displayName": "Windows x64 (Visual Studio 2026)",
       "description": "Windows build for x64 with Visual Studio 2026",
+      "configuration": "RelWithDebInfo"
+    },
+    {
+      "name": "windows-x64-vs2022",
+      "configurePreset": "windows-x64-vs2022",
+      "displayName": "Windows x64 (Visual Studio 2022)",
+      "description": "Windows build for x64 with Visual Studio 2022",
       "configuration": "RelWithDebInfo"
     },
     {

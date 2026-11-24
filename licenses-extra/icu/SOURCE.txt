@@ -1,0 +1,1 @@
+https://github.com/unicode-org/icu/blob/release-78.3/LICENSE (ICU 78.3, as shipped by MSYS2 mingw-w64-ucrt-x86_64-icu 78.3)

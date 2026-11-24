@@ -1,0 +1,12 @@
+# Build outputs (build-all.sh)
+/build/
+/dist/
+/deps/
+bonjour-sdk/Lib/x64/dnssd.lib
+
+# Local-only files. session.log / audio-test.txt can contain MAC addresses
+# and iPhone device IDs — never commit them.
+session.log
+*.log
+audio-test.txt
+/UxPlay-local-changes.patch

@@ -39,6 +39,9 @@ add_executable(KagamiCast WIN32 ${APP_SOURCES})
 
 target_include_directories(KagamiCast PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 target_link_libraries(KagamiCast PRIVATE Qt6::Widgets)
+if(WIN32)
+  target_link_libraries(KagamiCast PRIVATE dxgi)   # OBS mode: map OBS's adapter LUID to an index
+endif()
 
 # No machine-specific paths are compiled in: uxplay.exe and the GStreamer runtime
 # are found next to KagamiCast.exe (override with UXPLAY_EXE for development).

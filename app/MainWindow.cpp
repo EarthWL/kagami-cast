@@ -31,9 +31,16 @@
 #    define WIN32_LEAN_AND_MEAN
 #  endif
 #  include <windows.h>
+#  include <dxgi.h>
 #endif
 
 namespace {
+
+// OBS mode: uxplay hands its decoded frames to the "Kagami Cast" OBS source
+// (obs-plugin/) through GStreamer's d3d11ipcsink on this named pipe. The plugin
+// shows them without a copy only when they come from the graphics adapter OBS
+// renders on; it writes that adapter's LUID to obs-adapter.txt in our data folder.
+const QString kObsPipe = QStringLiteral("\\\\.\\pipe\\kagami-cast");
 
 // The name reaches uxplay.exe through the ANSI command line, which is not UTF-8 on
 // Windows: a Thai name makes uxplay exit ("invalid (non-UTF-8/ascii) server name")
@@ -170,8 +177,18 @@ void MainWindow::buildUi() {
     presetHint->setWordWrap(true);
     col->addWidget(presetHint);
 
-    // access control
     const QString checkCss = QStringLiteral("color:#c9c9d1; font-size:13px;");
+    m_obsCheck = new QCheckBox(QStringLiteral("ส่งภาพเข้า OBS (ไม่เปิดหน้าต่างภาพ)"));
+    m_obsCheck->setStyleSheet(checkCss);
+    col->addWidget(m_obsCheck);
+    auto *obsHint = new QLabel(QStringLiteral(
+        "ต้องติดตั้งปลั๊กอิน Kagami Cast for OBS แล้วเพิ่ม Source \"Kagami Cast (iPhone / iPad)\" ใน OBS · "
+        "เสียงยังออกลำโพงตามปกติ — ถ้าจะอัดเสียงด้วย ใช้ Application Audio Capture เลือก uxplay.exe"));
+    obsHint->setStyleSheet(hintCss);
+    obsHint->setWordWrap(true);
+    col->addWidget(obsHint);
+
+    // access control
     m_pinCheck = new QCheckBox(QStringLiteral("ต้องใส่ PIN เมื่อ iPhone เครื่องใหม่เชื่อมต่อครั้งแรก"));
     m_pinCheck->setStyleSheet(checkCss);
     col->addWidget(m_pinCheck);
@@ -236,6 +253,7 @@ void MainWindow::loadSettings() {
         m_presetCombo->setCurrentIndex(preset);
 
     m_pinCheck->setChecked(m_settings->value(QStringLiteral("requirePin"), false).toBool());
+    m_obsCheck->setChecked(m_settings->value(QStringLiteral("obsMode"), false).toBool());
     m_onTop->setChecked(m_settings->value(QStringLiteral("alwaysOnTop"), false).toBool());
     updateStartEnabled();
 }
@@ -245,6 +263,7 @@ void MainWindow::saveSettings() {
         m_settings->setValue(QStringLiteral("name"), serverName());
     m_settings->setValue(QStringLiteral("preset"), m_presetCombo->currentIndex());
     m_settings->setValue(QStringLiteral("requirePin"), m_pinCheck->isChecked());
+    m_settings->setValue(QStringLiteral("obsMode"), m_obsCheck->isChecked());
     m_settings->setValue(QStringLiteral("alwaysOnTop"), m_onTop->isChecked());
     m_settings->sync();
 }
@@ -340,7 +359,28 @@ QStringList MainWindow::engineArguments() const {
     QStringList args;
     // -nh: advertise exactly the typed name (uxplay appends "@<computer>" otherwise)
     args << QStringLiteral("-n") << serverName() << QStringLiteral("-nh");
-    args += m_presetCombo->currentData().toString().split(QLatin1Char(' '), Qt::SkipEmptyParts);
+    QStringList preset = m_presetCombo->currentData().toString().split(QLatin1Char(' '), Qt::SkipEmptyParts);
+    if (m_obsCheck->isChecked()) {
+        // The preset's window sink is replaced by the OBS sink below.
+        const qsizetype vs = preset.indexOf(QStringLiteral("-vs"));
+        if (vs >= 0)
+            preset.remove(vs, qMin<qsizetype>(2, preset.size() - vs));
+    }
+    args += preset;
+    if (m_obsCheck->isChecked()) {
+        // uxplay builds "<decoder> ! <-vc> ! videoscale ! <-vs> name=... sync=...".
+        // The decoders hand over D3D11 textures and videoscale passes those through,
+        // so the picture stays on the GPU; d3d11convert makes it the BGRA the plugin
+        // draws directly. gst_parse_launch unescapes backslashes, hence the doubling.
+        const int adapter = obsAdapter(nullptr);
+        const QString onAdapter = adapter >= 0 ? QStringLiteral(" adapter=%1").arg(adapter) : QString();
+        QString pipe = kObsPipe;
+        pipe.replace(QLatin1Char('\\'), QStringLiteral("\\\\"));
+        args << QStringLiteral("-vc")
+             << QStringLiteral("d3d11convert%1 ! video/x-raw(memory:D3D11Memory),format=BGRA").arg(onAdapter)
+             << QStringLiteral("-vs")
+             << QStringLiteral("d3d11ipcsink pipe-name=%1%2").arg(pipe, onAdapter);
+    }
     if (m_pinCheck->isChecked()) {
         // -pin: a device must enter the onscreen PIN the first time it connects.
         // -key: random server key kept in our data folder. Without it uxplay derives
@@ -380,6 +420,45 @@ QProcessEnvironment MainWindow::engineEnvironment() const {
     return env;
 }
 
+// Index, in DXGI enumeration order (what d3d11ipcsink's "adapter" means), of the
+// adapter the OBS plugin last reported. Matched by LUID: a GPU can appear twice
+// with the same name.
+int MainWindow::obsAdapter(QString *description) const {
+    QFile f(m_dataDir + QStringLiteral("/obs-adapter.txt"));
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text))
+        return -1;
+    qint64 luid = 0;
+    bool ok = false;
+    while (!f.atEnd()) {
+        const QString line = QString::fromUtf8(f.readLine()).trimmed();
+        if (line.startsWith(QLatin1String("adapter_luid=")))
+            luid = line.mid(13).toLongLong(&ok);
+    }
+    if (!ok)
+        return -1;
+    int found = -1;
+#ifdef Q_OS_WIN
+    IDXGIFactory1 *factory = nullptr;
+    if (FAILED(CreateDXGIFactory1(__uuidof(IDXGIFactory1), reinterpret_cast<void **>(&factory))))
+        return -1;
+    IDXGIAdapter1 *adapter = nullptr;
+    for (UINT i = 0; found < 0 && factory->EnumAdapters1(i, &adapter) != DXGI_ERROR_NOT_FOUND; ++i) {
+        DXGI_ADAPTER_DESC1 desc;
+        if (SUCCEEDED(adapter->GetDesc1(&desc)) &&
+            ((qint64(desc.AdapterLuid.HighPart) << 32) | desc.AdapterLuid.LowPart) == luid) {
+            found = int(i);
+            if (description)
+                *description = QString::fromWCharArray(desc.Description);
+        }
+        adapter->Release();
+    }
+    factory->Release();
+#else
+    Q_UNUSED(description);
+#endif
+    return found;
+}
+
 // ---------------------------------------------------------------- start / stop
 
 void MainWindow::onStart() {
@@ -409,6 +488,16 @@ void MainWindow::onStart() {
         appendLog(QStringLiteral(
             "(คำเตือน: path ของโฟลเดอร์ข้อมูลมีอักษรที่ไม่ใช่ภาษาอังกฤษ จึงเก็บ key และรายชื่อเครื่อง"
             "ที่จับคู่แล้วไม่ได้ — PIN ยังใช้ได้ แต่ป้องกันได้น้อยลง)"));
+    }
+    if (m_obsCheck->isChecked()) {
+        QString gpu;
+        if (obsAdapter(&gpu) >= 0)
+            appendLog(QStringLiteral("โหมด OBS: ส่งภาพจากการ์ดจอเดียวกับ OBS (%1) — ภาพจะขึ้นที่ Source "
+                                     "\"Kagami Cast\" ใน OBS").arg(gpu));
+        else
+            appendLog(QStringLiteral("โหมด OBS: ยังไม่รู้ว่า OBS ใช้การ์ดจอใบไหน จึงใช้การ์ดหลักไปก่อน — "
+                                     "เปิด OBS ที่มี Source \"Kagami Cast\" แล้วกดหยุด/เริ่มใหม่ ถ้า OBS "
+                                     "แจ้งว่ารับภาพผ่าน CPU"));
     }
     const QStringList args = engineArguments();
     appendLog(QStringLiteral("$ uxplay %1").arg(args.join(QLatin1Char(' '))));
@@ -495,6 +584,7 @@ void MainWindow::onProcessStateChanged(QProcess::ProcessState state) {
     m_nameEdit->setEnabled(idle);
     m_presetCombo->setEnabled(idle);
     m_pinCheck->setEnabled(idle);
+    m_obsCheck->setEnabled(idle);
     updateStartEnabled();
 }
 

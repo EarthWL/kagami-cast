@@ -63,11 +63,12 @@ private:
     QString uxplayExe() const;
     QStringList engineArguments() const;
     QProcessEnvironment engineEnvironment() const;
+    int obsAdapter(QString *description) const;   // DXGI index of OBS's adapter, -1 = unknown
 
     static QString defaultServerName();
     static QString asciiSafePath(const QString &path);
 
-    QString    m_dataDir;            // %LOCALAPPDATA%\AirCast\AirCastReceiver
+    QString    m_dataDir;            // %LOCALAPPDATA%\KagamiCast
     QSettings *m_settings = nullptr;
     QFile      m_logFile;
     QProcess  *m_proc = nullptr;
@@ -84,6 +85,7 @@ private:
     QLineEdit      *m_nameEdit = nullptr;
     QComboBox      *m_presetCombo = nullptr;
     QCheckBox      *m_pinCheck = nullptr;
+    QCheckBox      *m_obsCheck = nullptr;
     QCheckBox      *m_onTop = nullptr;
     QPushButton    *m_startBtn = nullptr;
     QPushButton    *m_stopBtn = nullptr;

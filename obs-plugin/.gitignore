@@ -1,0 +1,8 @@
+# OBS dependencies downloaded by the build (cmake/common/buildspec_common.cmake)
+/.deps/
+# build trees of the CMake presets
+/build_*/
+# Exclude lock files
+*.lock.json
+# Exclude CMake build number cache
+/cmake/.CMakeBuildNumber

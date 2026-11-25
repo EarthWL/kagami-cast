@@ -17,21 +17,27 @@ shows the connection status and log.
 - GPU video decoding (Direct3D 11/12, NVIDIA, Intel, AMD), software fallback
 - Optional PIN pairing so nobody else on the network can cast to your screen
 - **Send the picture to OBS Studio** as a source of its own — no window capture, no copy through the CPU
-- Installer sets up Windows Firewall (private networks by default) and Apple Bonjour
+- No Apple Bonjour needed: the receiver is announced through the mDNS service built into Windows
+- Installer sets up Windows Firewall (private networks by default)
 - No telemetry, no account, no ads
 
 ## Install
 
 Download `KagamiCast-<version>-setup.exe` from the [Releases page](https://github.com/EarthWL/kagami-cast/releases) and run it.
-It installs the program, adds firewall rules for the receiver and installs
-Apple Bonjour via winget if it is missing. A portable zip is also provided.
+It installs the program and adds firewall rules for the receiver. A portable zip
+is also provided.
 
 The installer is not code-signed yet, so Windows SmartScreen may warn on first run
 (*More info → Run anyway*).
 
-**Requirements:** Windows 10/11 64-bit, the iPhone and PC on the same network, and
-Apple Bonjour (the installer handles it). If the iPhone does not list the PC, set
-the Wi-Fi network profile to *Private* in Windows settings.
+**Requirements:** Windows 10/11 64-bit and the iPhone and PC on the same network.
+If the iPhone does not list the PC, set the Wi-Fi network profile to *Private* in
+Windows settings.
+
+**Upgrading from 1.2 or older:** those versions installed Apple Bonjour, which is
+no longer used. You can uninstall it (*Settings → Apps → Bonjour*); that also
+ends the *"This module is blocked from loading into the Local Security Authority"*
+message (`mdnsNSP.dll`) that Windows 11 shows at start-up while Bonjour is installed.
 
 ## Use with OBS Studio
 
@@ -85,8 +91,14 @@ The product name and installer id live in `product.conf`.
 
 `KagamiCast.exe` starts `uxplay.exe` as a child process with the chosen options,
 reads its log to show the session state, and stops it with the window. uxplay
-advertises the receiver through Bonjour (mDNS), receives the AirPlay stream and
-renders it with GStreamer. Settings and logs are stored in `%LOCALAPPDATA%\KagamiCast`.
+advertises the receiver over mDNS, receives the AirPlay stream and renders it with
+GStreamer. Settings and logs are stored in `%LOCALAPPDATA%\KagamiCast`.
+
+uxplay loads Apple's DNS-SD client library, `dnssd.dll`, at run time. Kagami Cast
+ships its own `dnssd.dll` next to `uxplay.exe` ([dnssd-shim/](dnssd-shim/)): the same
+seven calls, implemented on Windows' built-in DNS-SD API (`DnsServiceRegister`,
+Windows 10 and later), so UxPlay stays unmodified and Bonjour is not needed. If
+that API is missing it falls back to an installed Bonjour.
 
 ## License
 

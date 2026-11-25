@@ -49,7 +49,7 @@ VersionInfoVersion={#AppVersion}
 DefaultDirName={autopf}\{#AppName}
 DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
-; admin: Program Files, Windows Firewall rules and the Bonjour service
+; admin: Program Files, Windows Firewall rules and the OBS plugin in ProgramData
 PrivilegesRequired=admin
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
@@ -77,10 +77,6 @@ en.TaskPublic=Also allow on Public networks (not recommended: anyone on the same
 th.TaskPublic=อนุญาตบนเครือข่าย Public ด้วย (ไม่แนะนำ: ใครอยู่ Wi-Fi เดียวกันก็ส่งภาพขึ้นจอได้)
 en.StatusFirewall=Adding Windows Firewall rules...
 th.StatusFirewall=กำลังเพิ่มกฎ Windows Firewall...
-en.StatusBonjour=Installing Apple Bonjour (lets the iPhone find this PC)...
-th.StatusBonjour=กำลังติดตั้ง Apple Bonjour (ทำให้ iPhone มองเห็นเครื่องนี้)...
-en.BonjourFailed=Apple Bonjour could not be installed automatically (winget is missing or there is no internet).%n%nPlease install "Bonjour Print Services for Windows" from Apple (or iTunes), then start {#AppName}. Without Bonjour the iPhone cannot see this PC.
-th.BonjourFailed=ติดตั้ง Apple Bonjour อัตโนมัติไม่สำเร็จ (ไม่มี winget หรือไม่มีอินเทอร์เน็ต)%n%nกรุณาติดตั้ง "Bonjour Print Services for Windows" จาก Apple (หรือ iTunes) แล้วค่อยเปิด {#AppName} — ถ้าไม่มี Bonjour iPhone จะมองไม่เห็นเครื่องนี้
 en.ObsGroup=OBS Studio:
 th.ObsGroup=OBS Studio:
 en.TaskObs=Install the plugin that shows the iPhone picture as an OBS source (OBS 31 or newer)
@@ -129,33 +125,9 @@ begin
     Result := 'private,domain';
 end;
 
-function BonjourInstalled(): Boolean;
-begin
-  Result := RegKeyExists(HKLM, 'SYSTEM\CurrentControlSet\Services\Bonjour Service');
-end;
-
-{ Apple's Bonjour installer is not redistributed with this program; winget
-  fetches it from Apple. Settings/logs in %LOCALAPPDATA%\KagamiCast are kept
-  on uninstall (per-user data). }
-procedure InstallBonjourIfMissing();
-var
-  ResultCode: Integer;
-begin
-  if BonjourInstalled() then
-    Exit;
-  WizardForm.StatusLabel.Caption := CustomMessage('StatusBonjour');
-  WizardForm.Refresh();
-  if (not Exec(ExpandConstant('{cmd}'),
-               '/c winget install --id Apple.Bonjour -e --silent --accept-source-agreements --accept-package-agreements --disable-interactivity',
-               '', SW_HIDE, ewWaitUntilTerminated, ResultCode)) or (not BonjourInstalled()) then
-    SuppressibleMsgBox(CustomMessage('BonjourFailed'), mbInformation, MB_OK, IDOK);
-end;
-
-procedure CurStepChanged(CurStep: TSetupStep);
-begin
-  if CurStep = ssPostInstall then
-    InstallBonjourIfMissing();
-end;
+{ No Apple Bonjour: uxplay's dnssd.dll (dnssd-shim/) uses the DNS-SD service
+  built into Windows. A Bonjour installed by version 1.2 or older is left alone.
+  Settings/logs in %LOCALAPPDATA%\KagamiCast are kept on uninstall (per-user data). }
 
 #if HaveObsPlugin
 var

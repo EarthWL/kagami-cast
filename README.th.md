@@ -16,19 +16,24 @@ Kagami Cast คือหน้าต่างควบคุมบน Windows �
 - ถอดรหัสภาพด้วย GPU (Direct3D 11/12, NVIDIA, Intel, AMD) และมีแบบซอฟต์แวร์สำรอง
 - เลือกให้ต้องใส่ PIN ได้ กันคนอื่นในเครือข่ายส่งภาพขึ้นจอ
 - **ส่งภาพเข้า OBS Studio** เป็น Source โดยตรง ไม่ต้องใช้ Window Capture และภาพไม่ต้องผ่าน CPU
-- ตัวติดตั้งตั้ง Firewall ให้ (ค่าเริ่มต้นเฉพาะเครือข่าย Private) และลง Apple Bonjour ให้
+- ไม่ต้องลง Apple Bonjour: ประกาศชื่อเครื่องผ่านระบบ mDNS ที่มีใน Windows เอง
+- ตัวติดตั้งตั้ง Firewall ให้ (ค่าเริ่มต้นเฉพาะเครือข่าย Private)
 - ไม่มี telemetry ไม่ต้องสมัครบัญชี ไม่มีโฆษณา
 
 ## ติดตั้ง
 
 ดาวน์โหลด `KagamiCast-<version>-setup.exe` จาก[หน้า Releases](https://github.com/EarthWL/kagami-cast/releases) แล้วรัน — ตัวติดตั้งจะลงโปรแกรม
-เพิ่มกฎ Firewall ให้ตัวรับภาพ และลง Apple Bonjour ผ่าน winget ถ้ายังไม่มี มีแบบ zip portable ให้ด้วย
+และเพิ่มกฎ Firewall ให้ตัวรับภาพ มีแบบ zip portable ให้ด้วย
 
 ตัวติดตั้งยังไม่ได้ลงลายเซ็นดิจิทัล Windows SmartScreen จึงอาจเตือนตอนเปิดครั้งแรก
 (*More info → Run anyway*)
 
-**ต้องมี:** Windows 10/11 64-bit, iPhone กับ PC อยู่เครือข่ายเดียวกัน และ Apple Bonjour
-(ตัวติดตั้งจัดการให้) — ถ้า iPhone ไม่เห็นชื่อเครื่อง ให้ตั้ง Wi-Fi ใน Windows เป็น *Private*
+**ต้องมี:** Windows 10/11 64-bit และ iPhone กับ PC อยู่เครือข่ายเดียวกัน — ถ้า iPhone ไม่เห็นชื่อเครื่อง
+ให้ตั้ง Wi-Fi ใน Windows เป็น *Private*
+
+**อัปเกรดจากรุ่น 1.2 หรือเก่ากว่า:** รุ่นเหล่านั้นลง Apple Bonjour ไว้ ซึ่งตอนนี้ไม่ได้ใช้แล้ว ถอนออกได้
+(*Settings → Apps → Bonjour*) และข้อความ *"This module is blocked from loading into the Local Security
+Authority"* (`mdnsNSP.dll`) ที่ Windows 11 เด้งตอนเปิดเครื่องจะหายไปด้วย
 
 ## ใช้กับ OBS Studio
 
@@ -81,8 +86,12 @@ bash build-all.sh
 
 `KagamiCast.exe` สั่งรัน `uxplay.exe` เป็น child process ตาม option ที่เลือก อ่าน log ของมัน
 มาแสดงสถานะ และปิดมันไปพร้อมหน้าต่าง (Windows Job Object) — uxplay ประกาศตัวผ่าน
-Bonjour (mDNS) รับสตรีม AirPlay แล้วแสดงผลด้วย GStreamer
+mDNS รับสตรีม AirPlay แล้วแสดงผลด้วย GStreamer
 
+- uxplay โหลด `dnssd.dll` (ไลบรารี DNS-SD ของ Apple) ตอนรัน Kagami Cast ใส่ `dnssd.dll` ของตัวเองไว้ข้าง
+  `uxplay.exe` ([dnssd-shim/](dnssd-shim/)) ซึ่งทำ 7 ฟังก์ชันเดียวกันบน DNS-SD API ที่มีใน Windows
+  (`DnsServiceRegister`, Windows 10 ขึ้นไป) — UxPlay จึงไม่ต้องแก้ และไม่ต้องใช้ Bonjour
+  ถ้า Windows ไม่มี API นี้จะใช้ Bonjour ที่ติดตั้งไว้แทน
 - ค่าที่ตั้ง `settings.ini`, log `session.log` (หมุนไฟล์เมื่อเกิน 1 MB), key ของเครื่องรับ `uxplay.pem`,
   รายชื่อเครื่องที่ใส่ PIN แล้ว `uxplay.register` และ GStreamer registry อยู่ที่ `%LOCALAPPDATA%\KagamiCast`
 - **โหมด PIN** ส่ง `-pin -key … -reg …` ต้องมีครบ: ไม่มี `-reg` uxplay จะเชื่อ client ที่อ้างว่า

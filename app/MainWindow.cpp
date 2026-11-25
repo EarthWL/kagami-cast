@@ -45,7 +45,9 @@ const QString kObsPipe = QStringLiteral("\\\\.\\pipe\\kagami-cast");
 // The name reaches uxplay.exe through the ANSI command line, which is not UTF-8 on
 // Windows: a Thai name makes uxplay exit ("invalid (non-UTF-8/ascii) server name")
 // on Thai-locale Windows and turns into "????" elsewhere. Allow printable ASCII only.
-const QRegularExpression kNameRe(QStringLiteral("^[A-Za-z0-9][A-Za-z0-9 ._()'-]{0,39}$"));
+// No '.': Windows' DNS-SD service splits the advertised name at every dot
+// (dnssd.dll turns them into '-', so the iPhone would show another name).
+const QRegularExpression kNameRe(QStringLiteral("^[A-Za-z0-9][A-Za-z0-9 _()'-]{0,39}$"));
 
 const qint64 kMaxLogBytes = 1024 * 1024;   // rotate session.log above 1 MB
 
@@ -148,7 +150,7 @@ void MainWindow::buildUi() {
     connect(m_nameEdit, &QLineEdit::textChanged, this, &MainWindow::updateStartEnabled);
     col->addWidget(m_nameEdit);
     auto *nameHint = new QLabel(QStringLiteral(
-        "ใช้ได้เฉพาะ A–Z, a–z, 0–9, เว้นวรรค และ - _ . ( ) ' ไม่เกิน 40 ตัว (ภาษาไทยใช้ไม่ได้)"));
+        "ใช้ได้เฉพาะ A–Z, a–z, 0–9, เว้นวรรค และ - _ ( ) ' ไม่เกิน 40 ตัว (ภาษาไทยใช้ไม่ได้)"));
     nameHint->setStyleSheet(hintCss);
     nameHint->setWordWrap(true);
     col->addWidget(nameHint);
@@ -244,6 +246,7 @@ void MainWindow::buildUi() {
 
 void MainWindow::loadSettings() {
     QString name = m_settings->value(QStringLiteral("name")).toString();
+    name.replace(QLatin1Char('.'), QLatin1Char('-'));   // allowed up to version 1.2
     if (!kNameRe.match(name).hasMatch())
         name = defaultServerName();
     m_nameEdit->setText(name);
@@ -313,7 +316,7 @@ QString MainWindow::serverName() const {
 
 QString MainWindow::defaultServerName() {
     QString host = QSysInfo::machineHostName();
-    host.replace(QRegularExpression(QStringLiteral("[^A-Za-z0-9 ._()'-]")), QStringLiteral("-"));
+    host.replace(QRegularExpression(QStringLiteral("[^A-Za-z0-9 _()'-]")), QStringLiteral("-"));
     host = host.left(40);
     if (kNameRe.match(host).hasMatch())
         return host;
@@ -515,8 +518,8 @@ void MainWindow::onStop() {
     m_stopRequested = true;
     // uxplay on Windows only reacts to console Ctrl events, not to the WM_CLOSE
     // that QProcess::terminate() sends, so terminate() would just stall the UI
-    // until a timeout. kill() is immediate; Bonjour withdraws the advertisement
-    // when the process's connection to the mDNS service closes.
+    // until a timeout. kill() is immediate; Windows' DNS-SD service withdraws the
+    // advertisement (mDNS goodbye) when the registering process ends.
     m_proc->kill();
 }
 
@@ -639,16 +642,21 @@ void MainWindow::parseLine(const QString &line) {
     static const QRegularExpression rePin(QStringLiteral("CLIENT MUST NOW ENTER PIN = \"(\\d+)\""));
 
     // --- fatal start-up problems: remembered, shown when uxplay exits
+    // DNS-SD errors: uxplay's dnssd.dll is ours (dnssd-shim/), on Windows' own service
     if (line.contains(QLatin1String("Could not initialize dnssd library"))) {
-        m_lastError = QStringLiteral("ยังไม่ได้ติดตั้ง Apple Bonjour (รัน INSTALL-Bonjour.bat)");
+        m_lastError = QStringLiteral("ไม่พบไฟล์ dnssd.dll ข้าง uxplay.exe — ติดตั้งโปรแกรมใหม่");
         return;
     }
     if (line.contains(QLatin1String("No DNS-SD Server found"))) {
-        m_lastError = QStringLiteral("Bonjour Service ไม่ทำงาน — ลองรีสตาร์ทเครื่อง");
+        m_lastError = QStringLiteral("Windows ประกาศชื่อเครื่องบนเครือข่ายไม่สำเร็จ — ลองรีสตาร์ทเครื่อง");
+        return;
+    }
+    if (line.contains(QLatin1String("error code -65563"))) {   // kDNSServiceErr_ServiceNotRunning
+        m_lastError = QStringLiteral("Windows เครื่องนี้ไม่มีระบบประกาศชื่อเครื่อง (DNS-SD) — อัปเดต Windows หรือติดตั้ง Apple Bonjour");
         return;
     }
     if (line.contains(QLatin1String("kDNSServiceErr_NameConflict"))) {
-        m_lastError = QStringLiteral("ชื่อนี้ถูกใช้อยู่ หรือมี uxplay อีกตัวเปิดอยู่ — ลองเปลี่ยนชื่อเครื่อง");
+        m_lastError = QStringLiteral("มีเครื่องอื่นในเครือข่ายใช้ชื่อนี้อยู่ หรือมี uxplay อีกตัวเปิดอยู่ — เปลี่ยนชื่อเครื่องแล้วกดเริ่มใหม่");
         return;
     }
     if (line.startsWith(QLatin1String("invalid")) || line.startsWith(QLatin1String("unknown option"))) {

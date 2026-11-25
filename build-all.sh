@@ -19,7 +19,8 @@ echo ">> $APP_DISPLAY_NAME $APP_VERSION"
 [ -f UxPlay/CMakeLists.txt ] || { echo "UxPlay/ is empty — run: git submodule update --init" >&2; exit 1; }
 
 echo ">> Bonjour import library (generated from bonjour-sdk/Lib/x64/dnssd.def)"
-# uxplay loads dnssd.dll at run time, but its CMake build expects the SDK layout.
+# uxplay loads dnssd.dll at run time (ours, built below), but its CMake build
+# expects the Bonjour SDK layout.
 dlltool -d bonjour-sdk/Lib/x64/dnssd.def -l bonjour-sdk/Lib/x64/dnssd.lib
 
 echo ">> uxplay (UxPlay, upstream source)"
@@ -41,6 +42,18 @@ PREFIX_MAP="-ffile-prefix-map=$(cygpath -m "$SRC")/="
 cmake -S UxPlay -B build/uxplay -G Ninja -DCMAKE_BUILD_TYPE= \
       -DCMAKE_C_FLAGS="-Wno-alloc-size-larger-than $PREFIX_MAP" -DCMAKE_CXX_FLAGS="$PREFIX_MAP"
 cmake --build build/uxplay
+
+echo ">> dnssd.dll (dnssd-shim/: DNS-SD for uxplay on Windows' own service, no Apple Bonjour)"
+SHIM="$SRC/build/dnssd-shim"
+mkdir -p "$SHIM"
+SHIM_CFLAGS=(-std=c11 -O2 -Wall -Wextra -Werror -static-libgcc "$PREFIX_MAP")
+gcc "${SHIM_CFLAGS[@]}" -shared -Wl,--no-insert-timestamp -o "$SHIM/dnssd.dll" \
+    dnssd-shim/dnssd_shim.c dnssd-shim/dnssd.def
+gcc "${SHIM_CFLAGS[@]}" -o "$SHIM/shimtest.exe" dnssd-shim/test/shimtest.c
+# the TXT records must be byte-for-byte what Bonjour builds (UxPlay also sends them in /info)
+"$SHIM/shimtest.exe" txt "$(cygpath -m "$SHIM/dnssd.dll")"
+# next to the build-tree uxplay too, for tools/dev-run-*.bat
+cp "$SHIM/dnssd.dll" build/uxplay/
 
 # gst-libav is built here against the installed GStreamer; a different minor
 # version (MSYS2 updates, CI runners) would not load. Fail early with a clear hint.

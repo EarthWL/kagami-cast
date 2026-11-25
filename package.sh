@@ -12,6 +12,7 @@ UCRT="/ucrt64"
 DEPS="$SRC/deps/prefix"                                 # minimal FFmpeg + gst-libav (build-deps.sh)
 APP_EXE="$SRC/build/app/KagamiCast.exe"
 UXPLAY_EXE="$SRC/build/uxplay/uxplay.exe"
+DNSSD_DLL="$SRC/build/dnssd-shim/dnssd.dll"                # dnssd-shim/, built by build-all.sh
 # shellcheck source=product.conf
 source "$SRC/product.conf"
 APP_VERSION="$(sed -n 's/^project(KagamiCast VERSION \([0-9.]*\).*/\1/p' "$SRC/app/CMakeLists.txt")"
@@ -30,7 +31,7 @@ PLUGINS="app coreelements typefindfunctions playback autodetect videoparsersbad
  d3d11 d3d12 nvcodec qsv amfcodec mediafoundation va opengl
  wasapi wasapi2 directsound"
 
-for f in "$APP_EXE" "$UXPLAY_EXE" "$DEPS/lib/gstreamer-1.0/libgstlibav.dll"; do
+for f in "$APP_EXE" "$UXPLAY_EXE" "$DNSSD_DLL" "$DEPS/lib/gstreamer-1.0/libgstlibav.dll"; do
   [ -f "$f" ] || { echo "missing $f — run build-all.sh" >&2; exit 1; }
 done
 
@@ -39,7 +40,9 @@ rm -rf "$DIST"
 mkdir -p "$DIST" "$DIST/lib/gstreamer-1.0" "$DIST/libexec/gstreamer-1.0"
 
 echo ">> copy executables"
-cp "$APP_EXE" "$UXPLAY_EXE" "$DIST/"
+# dnssd.dll must sit next to uxplay.exe: uxplay calls LoadLibraryA("dnssd.dll"),
+# and the exe's folder is searched before System32 (where Bonjour puts its own).
+cp "$APP_EXE" "$UXPLAY_EXE" "$DNSSD_DLL" "$DIST/"
 
 echo ">> deploy Qt (windeployqt)"
 # Plain Qt Widgets (raster): no Direct3D shader compilers; the "generic" input
@@ -61,8 +64,7 @@ cp "$DEPS"/bin/av*.dll "$DIST/"
 
 echo ">> resolve DLL dependencies (objdump import tables)"
 # For every exe/dll in dist, read its imports; a DLL already in dist wins, one
-# found in /ucrt64/bin is copied, anything else is a Windows system DLL (or
-# Bonjour's dnssd.dll, loaded at run time and intentionally NOT bundled).
+# found in /ucrt64/bin is copied, anything else is a Windows system DLL.
 # (ldd is not used: it resolves through PATH and would pull MSYS2's full FFmpeg
 #  back in, because those DLLs have the same names as the minimal ones above.)
 declare -A IN_DIST UCRT_BIN
@@ -132,7 +134,7 @@ while IFS= read -r rel; do
     fi
   done
 done < <(cd "$DIST" && find . -type f \( -iname '*.dll' -o -iname '*.exe' \) | sed 's|^\./||' \
-           | grep -vE '^(KagamiCast|uxplay)\.exe$|^av[a-z]+-[0-9]+\.dll$|/libgstlibav\.dll$' | sort)
+           | grep -vE '^(KagamiCast|uxplay)\.exe$|^dnssd\.dll$|^av[a-z]+-[0-9]+\.dll$|/libgstlibav\.dll$' | sort)
 
 {
   cat <<EOF
@@ -153,7 +155,11 @@ Corresponding source code:
   to every release (see licenses/ffmpeg/configure-flags.txt for the configuration).
 - Everything else: unmodified MSYS2 UCRT64 packages of the versions listed below;
   build recipes at https://github.com/msys2/MINGW-packages, upstream sources at the
-  project URLs listed. Apple Bonjour is NOT included (installed separately).
+  project URLs listed.
+
+Apple Bonjour is neither included nor needed: dnssd.dll is part of
+$APP_DISPLAY_NAME (dnssd-shim/ in the source repository, GPL-3.0-or-later) and
+advertises the receiver through the DNS-SD service built into Windows.
 
 ------------------------------------------------------------------------------
 uxplay.exe — UxPlay (AirPlay mirroring server)

@@ -1,0 +1,9 @@
+LIBRARY dnssd
+EXPORTS
+    DNSServiceRegister
+    DNSServiceRefDeallocate
+    TXTRecordCreate
+    TXTRecordDeallocate
+    TXTRecordSetValue
+    TXTRecordGetLength
+    TXTRecordGetBytesPtr
